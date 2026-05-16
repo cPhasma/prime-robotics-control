@@ -1,116 +1,101 @@
 #include <Arduino.h>
 #include <ArduinoJson.h>
 #include "commands.h"
-
-// I2Cdevlib by Jeff Rowberg:
-// Arduino IDE -> Library Manager / ZIP library: I2Cdev + MPU6050
+#include <Wire.h>
 #include "I2Cdev.h"
 #include "MPU6050.h"
 
-#if I2CDEV_IMPLEMENTATION == I2CDEV_ARDUINO_WIRE
-  #include <Wire.h>
-#endif
+// Используется библиотека I2Cdevlib: I2Cdev.h + MPU6050.h.
+// Установить в Arduino IDE: libraries/I2Cdev и libraries/MPU6050.
 
-// ========== НАСТРОЙКИ ==========
-// Используем диапазон +-250 deg/s, потому что у него самая высокая точность.
-// Для MPU6050 чувствительность при этом равна 131 LSB / (deg/s).
-static const float GYRO_LSB_PER_DPS = 131.0f;
-static const float DEG_TO_RAD_F = 0.017453292519943295f;
-
-// ========== ГЛОБАЛЬНЫЙ ОБЪЕКТ ==========
 MPU6050 mpu;
+bool mpuInitialized = false;
+bool mpuCalibrated = false;
 
-static bool mpuInitialized = false;
-static bool mpuConnected = false;
-static bool gyroCalibrated = false;
+const float DEG_TO_RAD_F = 0.01745329251994f;
+const float GYRO_LSB_PER_DEG_S = 131.0f;  // диапазон +/-250 deg/s, лучше для малых углов
+const float ACCEL_LSB_PER_G = 8192.0f;    // диапазон +/-4g
+const float G_VALUE = 9.80665f;
 
-// ========== ИНИЦИАЛИЗАЦИЯ ==========
-// Здесь только запускаем I2C и проверяем датчик.
-// Калибровку специально НЕ делаем здесь каждый раз при измерении.
 void initMpu6050() {
-#if I2CDEV_IMPLEMENTATION == I2CDEV_ARDUINO_WIRE
   Wire.begin();
-#endif
-
   mpu.initialize();
+
+  if (!mpu.testConnection()) {
+    mpuInitialized = false;
+    return;
+  }
+
   mpu.setFullScaleGyroRange(MPU6050_GYRO_FS_250);
+  mpu.setFullScaleAccelRange(MPU6050_ACCEL_FS_4);
   mpu.setDLPFMode(MPU6050_DLPF_BW_20);
 
-  mpuConnected = mpu.testConnection();
   mpuInitialized = true;
-  gyroCalibrated = false;
+  mpuCalibrated = false;
 }
 
-static bool ensureMpuReady() {
+bool ensureMpuCalibrated() {
   if (!mpuInitialized) {
     initMpu6050();
   }
-  if (!mpuConnected) {
-    mpuConnected = mpu.testConnection();
-  }
-  return mpuConnected;
-}
-
-static bool calibrateGyroOnce() {
-  if (gyroCalibrated) {
+  if (!mpuInitialized) {
     return false;
   }
 
-  // ВАЖНО: во время этой калибровки машинка должна стоять неподвижно.
-  // CalibrateGyro() из I2Cdevlib считает смещение гироскопа и записывает offset'ы.
-  delay(300);
-  mpu.setXGyroOffset(0);
-  mpu.setYGyroOffset(0);
-  mpu.setZGyroOffset(0);
-  mpu.CalibrateGyro(6);
-  gyroCalibrated = true;
+  if (!mpuCalibrated) {
+    // Калибровка выполняется только один раз после включения/первого обращения.
+    // В этот момент машинка должна стоять неподвижно.
+    delay(300);
+    mpu.CalibrateGyro(6);
+    mpuCalibrated = true;
+  }
   return true;
 }
 
-static float rawGyroToRadSec(int16_t rawValue) {
-  float degPerSec = ((float)rawValue) / GYRO_LSB_PER_DPS;
-  return degPerSec * DEG_TO_RAD_F;
-}
-
-// ========== УГЛОВАЯ СКОРОСТЬ ==========
-// Возвращаем уже физическую величину: rad/s, а не сырые LSB.
-CmdResult handleMpu6050(JsonObject params) {
-  if (!ensureMpuReady()) {
-    return CmdResult(1, "", "MPU6050 not connected");
+bool readMpu6050Data(Mpu6050Data &out) {
+  if (!ensureMpuCalibrated()) {
+    out.valid = false;
+    return false;
   }
 
-  bool calibratedNow = calibrateGyroOnce();
+  int16_t ax, ay, az, gx, gy, gz;
+  mpu.getMotion6(&ax, &ay, &az, &gx, &gy, &gz);
 
-  int16_t rawGx = 0;
-  int16_t rawGy = 0;
-  int16_t rawGz = 0;
-  mpu.getRotation(&rawGx, &rawGy, &rawGz);
+  out.valid = true;
+  out.gyro_x = ((float)gx / GYRO_LSB_PER_DEG_S) * DEG_TO_RAD_F;
+  out.gyro_y = ((float)gy / GYRO_LSB_PER_DEG_S) * DEG_TO_RAD_F;
+  out.gyro_z = ((float)gz / GYRO_LSB_PER_DEG_S) * DEG_TO_RAD_F;
+  out.accel_x = ((float)ax / ACCEL_LSB_PER_G) * G_VALUE;
+  out.accel_y = ((float)ay / ACCEL_LSB_PER_G) * G_VALUE;
+  out.accel_z = ((float)az / ACCEL_LSB_PER_G) * G_VALUE;
+  return true;
+}
 
-  float gyroX = rawGyroToRadSec(rawGx);
-  float gyroY = rawGyroToRadSec(rawGy);
-  float gyroZ = rawGyroToRadSec(rawGz);
+CmdResult handleMpu6050(JsonObject params) {
+  (void)params;
 
-  StaticJsonDocument<384> doc;
-  doc["valid"] = true;
-  doc["unit"] = "rad/s";
-  doc["calibrated"] = gyroCalibrated;
-  doc["calibrated_now"] = calibratedNow;
+  Mpu6050Data data;
+  bool ok = readMpu6050Data(data);
 
-  float gxOut = round(gyroX * 1000000.0f) / 1000000.0f;
-  float gyOut = round(gyroY * 1000000.0f) / 1000000.0f;
-  float gzOut = round(gyroZ * 1000000.0f) / 1000000.0f;
+  StaticJsonDocument<256> doc;
+  doc["valid"] = ok;
+  doc["calibrated"] = mpuCalibrated;
+  doc["unit_gyro"] = "rad/s";
+  doc["unit_accel"] = "m/s2";
 
-  // Основные поля. Сервер использует gyro_z / omega_z как угловую скорость вокруг Z.
-  doc["gyro_x"] = gxOut;
-  doc["gyro_y"] = gyOut;
-  doc["gyro_z"] = gzOut;
-
-  // Дублируем под omega_*, чтобы было явно понятно: это угловая скорость.
-  doc["omega_x"] = gxOut;
-  doc["omega_y"] = gyOut;
-  doc["omega_z"] = gzOut;
+  if (ok) {
+    doc["gyro_x"] = data.gyro_x;
+    doc["gyro_y"] = data.gyro_y;
+    doc["gyro_z"] = data.gyro_z;
+    doc["omega_x"] = data.gyro_x;
+    doc["omega_y"] = data.gyro_y;
+    doc["omega_z"] = data.gyro_z;
+    doc["accel_x"] = data.accel_x;
+    doc["accel_y"] = data.accel_y;
+    doc["accel_z"] = data.accel_z;
+  }
 
   String out;
   serializeJson(doc, out);
-  return CmdResult(0, out, "");
+  return CmdResult(ok ? 0 : 1, out, ok ? "" : "MPU6050 not initialized");
 }

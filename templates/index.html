@@ -125,17 +125,17 @@
 
         <div class="grid-4" style="margin-top: 12px;">
             <div><label>Целевая дистанция, м</label><input id="followTargetDistance" type="number" step="0.05" value="1.0"></div>
-            <div><label>Период dt, c</label><input id="followDt" type="number" step="0.01" value="0.10"></div>
+            <div><label>Период dt, c</label><input id="followDt" type="number" step="0.01" value="0.05"></div>
             <div><label>PWM</label><input type="text" value="0=максимум, 255=стоп" disabled></div>
-            <div><label>Сэмплы калибровки gyro</label><input id="followGyroSamples" type="number" step="5" value="15"></div>
-            <div><label>kp расстояния</label><input id="followKpD" type="number" step="0.05" value="0.85"></div>
-            <div><label>kd расстояния</label><input id="followKdD" type="number" step="0.02" value="0.28"></div>
-            <div><label>max_u</label><input id="followMaxU" type="number" step="0.05" value="0.75"></div>
-            <div><label>max PWM step</label><input id="followMaxPwmStep" type="number" step="1" value="14"></div>
+            <div><label>gyro axis</label><input id="followGyroAxis" type="text" value="auto"></div>
+            <div><label>kp расстояния</label><input id="followKpD" type="number" step="0.05" value="0.50"></div>
+            <div><label>kd расстояния</label><input id="followKdD" type="number" step="0.02" value="0.65"></div>
+            <div><label>max_u</label><input id="followMaxU" type="number" step="0.05" value="0.45"></div>
+            <div><label>max PWM step</label><input id="followMaxPwmStep" type="number" step="1" value="18"></div>
             <div><label>k_z бок. отклонение</label><input id="followKz" type="number" step="0.1" value="1.3"></div>
             <div><label>k_theta курс</label><input id="followKtheta" type="number" step="0.1" value="1.8"></div>
             <div><label>k_omega гироскоп</label><input id="followKomega" type="number" step="0.05" value="0.18"></div>
-            <div><label>max_turn</label><input id="followMaxTurn" type="number" step="0.02" value="0.22"></div>
+            <div><label>max_turn</label><input id="followMaxTurn" type="number" step="0.02" value="0.18"></div>
         </div>
 
         <div class="toolbar" style="margin-top: 15px;">
@@ -148,7 +148,7 @@
                 <button class="btn btn-gray" onclick="clearFollowCharts()">Очистить графики</button>
             </div>
         </div>
-        <div class="telemetry">Если дальномер/гироскоп на мгновение отвалился, поток регулятора не падает: берётся последнее нормальное значение, в лог пишется warning, скорость временно ограничивается.</div>
+        <div class="telemetry">Регулятор работает по матричной модели x(k+1)=Ad*x+Bd*u+Gd*vf+Hd*omega; управление q=F*xi, u=S*q. Если датчик на мгновение отвалился, берётся последнее корректное значение и пишется warning.</div>
 
         <div class="follow-panels" style="margin-top: 15px;">
             <div class="mini-card">
@@ -375,7 +375,7 @@ motor(left_pwm=255, right_pwm=255, left_dir="forward", right_dir="forward")
             k_theta: Number(document.getElementById('followKtheta').value),
             k_omega: Number(document.getElementById('followKomega').value),
             max_turn: Number(document.getElementById('followMaxTurn').value),
-            gyro_bias_samples: Number(document.getElementById('followGyroSamples').value)
+            gyro_axis: document.getElementById('followGyroAxis').value
         };
     }
 

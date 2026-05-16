@@ -64,7 +64,8 @@ void sendCapabilities() {
     "\"right_dir\":{\"type\":\"string\",\"enum\":[\"forward\",\"backward\"]}"
     "}},"
     "{\"name\":\"duration\",\"description\":\"Измерение расстояния ультразвуковым датчиком\",\"params_schema\":{}},"
-    "{\"name\":\"mpu6050\",\"description\":\"Угловая скорость MPU6050 в rad/s, калибровка один раз при первом обращении\",\"params_schema\":{}}"
+    "{\"name\":\"mpu6050\",\"description\":\"Данные MPU6050: угловые скорости рад/с и ускорения м/с2\",\"params_schema\":{}},"
+    "{\"name\":\"sensors\",\"description\":\"Быстрый совместный опрос HC-SR04 и MPU6050\",\"params_schema\":{}}"
     "]}"
   ));
   delay(100);

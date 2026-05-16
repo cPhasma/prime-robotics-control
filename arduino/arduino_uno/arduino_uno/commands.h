@@ -32,9 +32,29 @@ extern CmdResult handlePing(JsonObject params);
 extern CmdResult handleMotor(JsonObject params);
 extern CmdResult handleDuration(JsonObject params);
 extern CmdResult handleMpu6050(JsonObject params);
+extern CmdResult handleSensors(JsonObject params);
 extern void initMotor();
 extern void initDuration();
 extern void initMpu6050();
+
+struct DurationData {
+  bool valid = false;
+  unsigned long duration_us = 0;
+  float distance_cm = -1.0f;
+};
+
+struct Mpu6050Data {
+  bool valid = false;
+  float gyro_x = 0.0f;
+  float gyro_y = 0.0f;
+  float gyro_z = 0.0f;
+  float accel_x = 0.0f;
+  float accel_y = 0.0f;
+  float accel_z = 0.0f;
+};
+
+extern bool readDurationData(DurationData &out);
+extern bool readMpu6050Data(Mpu6050Data &out);
 
 // ========== JSON СХЕМЫ В PROGMEM ==========
 
@@ -48,7 +68,11 @@ const char CMD_DURATION_DESC[] PROGMEM = "Получить длительнос�
 
 // Команда mpu6050
 const char CMD_MPU6050_NAME[] PROGMEM = "mpu6050";
-const char CMD_MPU6050_DESC[] PROGMEM = "Получить угловую скорость MPU6050 в rad/s с однократной калибровкой";
+const char CMD_MPU6050_DESC[] PROGMEM = "Получить все данные с MPU6050 (гироскоп + акселерометр)";
+
+// Команда sensors
+const char CMD_SENSORS_NAME[] PROGMEM = "sensors";
+const char CMD_SENSORS_DESC[] PROGMEM = "Быстрый совместный опрос HC-SR04 и MPU6050";
 
 // Команда motor
 const char CMD_MOTOR_NAME[] PROGMEM = "motor";
@@ -66,7 +90,8 @@ const CommandEntry CMD_TABLE[] PROGMEM = {
   { CMD_PING_NAME, CMD_PING_DESC, nullptr, handlePing, nullptr },
   { CMD_MOTOR_NAME, CMD_MOTOR_DESC, CMD_MOTOR_PARAMS, handleMotor, initMotor },
   {CMD_DURATION_NAME, CMD_DURATION_DESC, nullptr, handleDuration, initDuration},
-  { CMD_MPU6050_NAME, CMD_MPU6050_DESC, nullptr, handleMpu6050, initMpu6050 }
+  { CMD_MPU6050_NAME, CMD_MPU6050_DESC, nullptr, handleMpu6050, initMpu6050 },
+  { CMD_SENSORS_NAME, CMD_SENSORS_DESC, nullptr, handleSensors, nullptr }
 };
 
 const int CMD_COUNT = sizeof(CMD_TABLE) / sizeof(CMD_TABLE[0]);
