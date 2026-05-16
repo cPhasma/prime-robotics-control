@@ -6,7 +6,7 @@ def drive_step(speed, delay_s=0.1):
     time.sleep(delay_s)
 
 def stop_car():
-    motor(left_pwm=0, right_pwm=0, left_dir="forward", right_dir="forward")
+    motor(left_pwm=255, right_pwm=255, left_dir="forward", right_dir="forward")
 
 for i in range(3):
     drive_step(140 + i * 10, 0.1)

@@ -72,8 +72,8 @@ registered_commands_by_car = {car_id: [] for car_id in CAR_IDS}
 pending_commands = {}
 pending_lock = threading.Lock()
 
-# Теперь PWM обычный: 0 = стоп, 255 = максимум. Это исправляет проблему с "полным газом".
-MOTOR_PWM_INVERTED = False
+# ВАЖНО: у этой машинки PWM инверсный: 0 = максимум, 255 = стоп.
+MOTOR_PWM_INVERTED = True
 
 
 def normalize_car_id(car_id):
@@ -440,8 +440,8 @@ def try_emergency_stop(car_id='car1', reason=''):
             payload = {
                 'cmd': 'motor',
                 'command_id': str(uuid.uuid4()),
-                'left_pwm': 0,
-                'right_pwm': 0,
+                'left_pwm': 255,
+                'right_pwm': 255,
                 'left_dir': 'forward',
                 'right_dir': 'forward',
             }

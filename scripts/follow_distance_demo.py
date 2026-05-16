@@ -19,7 +19,7 @@ def clamp(x, lo, hi):
 
 def norm_to_pwm(u):
     u = clamp(u, 0.0, 1.0)
-    return int(u * 255)
+    return int(round(255 * (1 - u)))
 
 prev_e_d = 0.0
 e_d_dot_f = 0.0
@@ -54,4 +54,4 @@ for step in range(200):
     prev_e_d = e_d
     time.sleep(DT)
 
-motor(left_pwm=0, right_pwm=0, left_dir="forward", right_dir="forward")
+motor(left_pwm=255, right_pwm=255, left_dir="forward", right_dir="forward")

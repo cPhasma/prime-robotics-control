@@ -63,13 +63,13 @@ def slew(current, target, max_step):
 
 def norm_to_pwm(u):
     u = clamp(u, 0.0, 1.0)
-    return int(round(u * 255))
+    return int(round(255 * (1 - u)))
 
 def ramp_pwm(current, target, max_step):
     return int(round(slew(float(current), float(target), float(max_step))))
 
 def stop_motors():
-    motor(left_pwm=0, right_pwm=0, left_dir="forward", right_dir="forward")
+    motor(left_pwm=255, right_pwm=255, left_dir="forward", right_dir="forward")
 
 def is_valid_distance(d):
     return MIN_VALID_DISTANCE_CM <= d <= MAX_VALID_DISTANCE_CM
@@ -117,8 +117,8 @@ e_dot_f = 0.0
 # Предыдущие управляющие значения
 u_s = 0.0
 u_delta = 0.0
-pwm_l = 0
-pwm_r = 0
+pwm_l = 255
+pwm_r = 255
 bad_distance_count = 0
 
 print("[run] smooth follower started")

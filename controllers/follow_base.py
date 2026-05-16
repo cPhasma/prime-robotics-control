@@ -36,8 +36,8 @@ class BaseFollowController:
         'max_pwm_step': 14,
         'min_valid_distance_m': 0.03,
         'max_valid_distance_m': 3.0,
-        # ВАЖНО: обычная Arduino-логика PWM: 0 = стоп, 255 = максимум.
-        'invert_pwm': False,
+        # ВАЖНО: у этой машинки PWM инверсный: 0 = максимум, 255 = стоп.
+        'invert_pwm': True,
         'gyro_bias_samples': 15,
         'z_leak': 0.97,
         'u_w_deadband': 0.006,
@@ -108,8 +108,8 @@ class BaseFollowController:
 
     def update_params(self, params):
         with self.lock:
-            # Не даём случайно снова включить инвертированный PWM.
-            self.params['invert_pwm'] = False
+            # Не даём случайно отключить инверсную PWM-логику.
+            self.params['invert_pwm'] = True
             for key, value in (params or {}).items():
                 if key not in self.params or key == 'invert_pwm':
                     continue
@@ -128,12 +128,13 @@ class BaseFollowController:
         return current + BaseFollowController.clamp(target - current, -max_step, max_step)
 
     def stop_pwm(self):
-        return 0
+        # В нашей прошивке/драйвере 255 — минимальная скорость, фактически стоп.
+        return 255
 
     def norm_to_pwm(self, u):
-        # u: 0 = стоп, 1 = максимум. На Arduino analogWrite: 0 = стоп, 255 = максимум.
+        # u: 0 = стоп, 1 = максимум. PWM инверсный: 255 = стоп, 0 = максимум.
         u = self.clamp(float(u), 0.0, 1.0)
-        return int(round(255.0 * u))
+        return int(round(255.0 * (1.0 - u)))
 
     def ramp_pwm(self, current, target, max_step):
         return int(round(self.slew(float(current), float(target), float(max_step))))

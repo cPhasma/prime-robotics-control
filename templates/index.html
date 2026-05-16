@@ -126,7 +126,7 @@
         <div class="grid-4" style="margin-top: 12px;">
             <div><label>Целевая дистанция, м</label><input id="followTargetDistance" type="number" step="0.05" value="1.0"></div>
             <div><label>Период dt, c</label><input id="followDt" type="number" step="0.01" value="0.10"></div>
-            <div><label>PWM</label><input type="text" value="0=стоп, 255=максимум" disabled></div>
+            <div><label>PWM</label><input type="text" value="0=максимум, 255=стоп" disabled></div>
             <div><label>Сэмплы калибровки gyro</label><input id="followGyroSamples" type="number" step="5" value="15"></div>
             <div><label>kp расстояния</label><input id="followKpD" type="number" step="0.05" value="0.85"></div>
             <div><label>kd расстояния</label><input id="followKdD" type="number" step="0.02" value="0.28"></div>
@@ -221,13 +221,14 @@
                 </div>
                 <textarea id="scriptEditor" class="editor">import time
 
-# PWM обычный: 0 = стоп, 255 = максимум
-for speed in [80, 120, 160]:
-    motor(left_pwm=speed, right_pwm=speed, left_dir="forward", right_dir="forward")
-    print("speed =", speed)
+# PWM инверсный: 0 = максимум, 255 = стоп
+# Чем меньше число, тем быстрее едет машинка.
+for pwm in [220, 180, 140]:
+    motor(left_pwm=pwm, right_pwm=pwm, left_dir="forward", right_dir="forward")
+    print("pwm =", pwm)
     time.sleep(0.4)
 
-motor(left_pwm=0, right_pwm=0, left_dir="forward", right_dir="forward")
+motor(left_pwm=255, right_pwm=255, left_dir="forward", right_dir="forward")
 </textarea>
                 <div class="telemetry">Разрешены: time, math, random, statistics, json, numpy, scipy.*, motor(...), duration(), mpu6050(), ping(), print(...).</div>
             </div>
@@ -496,9 +497,9 @@ motor(left_pwm=0, right_pwm=0, left_dir="forward", right_dir="forward")
                             <select name="left_dir"><option value="forward">Вперёд</option><option value="backward">Назад</option></select>
                         </div>
                         <div class="form-group">
-                            <label>Левый PWM: 0 стоп, 255 максимум</label>
-                            <input type="range" name="left_pwm" min="0" max="255" value="0">
-                            <div class="range-value left-val">0</div>
+                            <label>Левый PWM: 0 максимум, 255 стоп</label>
+                            <input type="range" name="left_pwm" min="0" max="255" value="255">
+                            <div class="range-value left-val">255</div>
                         </div>
                     </div>
                     <div>
@@ -507,9 +508,9 @@ motor(left_pwm=0, right_pwm=0, left_dir="forward", right_dir="forward")
                             <select name="right_dir"><option value="forward">Вперёд</option><option value="backward">Назад</option></select>
                         </div>
                         <div class="form-group">
-                            <label>Правый PWM: 0 стоп, 255 максимум</label>
-                            <input type="range" name="right_pwm" min="0" max="255" value="0">
-                            <div class="range-value right-val">0</div>
+                            <label>Правый PWM: 0 максимум, 255 стоп</label>
+                            <input type="range" name="right_pwm" min="0" max="255" value="255">
+                            <div class="range-value right-val">255</div>
                         </div>
                     </div>
                 </div>`;
