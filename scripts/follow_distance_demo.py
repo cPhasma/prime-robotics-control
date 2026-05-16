@@ -30,7 +30,7 @@ for step in range(200):
     imu_data = mpu6050()
 
     d = float(dist_data.get("distance_cm", 999.0))
-    wz = float(imu_data.get("gyro_z", 0.0))
+    wz = float(imu_data.get("omega_z", imu_data.get("gyro_z", 0.0)))
 
     e_d = d - DESIRED_DISTANCE
     raw_deriv = (e_d - prev_e_d) / DT

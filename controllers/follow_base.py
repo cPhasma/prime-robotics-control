@@ -183,13 +183,15 @@ class BaseFollowController:
         result = self.send_command_and_wait(
             self.car_id,
             {'cmd': 'mpu6050', 'command_id': str(uuid.uuid4())},
-            timeout=1.2,
+            # Первый вызов mpu6050 может занять дольше: на Arduino в этот момент
+            # I2Cdevlib один раз калибрует гироскоп. После этого ответы быстрые.
+            timeout=8.0,
         )
         if int(result.get('exit_code', 1)) != 0:
             raise RuntimeError(result.get('stderr') or result.get('stdout') or 'mpu6050 failed')
         parsed = result.get('_parsed_stdout')
         if isinstance(parsed, dict):
-            for key in ('gyro_z', 'gz', 'gyroZ', 'z'):
+            for key in ('omega_z', 'gyro_z', 'gyro_z_rad_s', 'gz', 'gyroZ', 'z'):
                 if key in parsed:
                     return float(parsed[key])
         raise RuntimeError(f'mpu6050 parse failed: {result.get("stdout", "")[:120]}')
@@ -213,7 +215,9 @@ class BaseFollowController:
 
     def safe_read_gyro_z(self):
         try:
-            wz = self.read_gyro_z() - self.gyro_bias
+            # Прошивка уже возвращает угловую скорость после однократной
+            # калибровки I2Cdevlib, поэтому дополнительный bias на сервере не вычитаем.
+            wz = self.read_gyro_z()
             self.bad_gyro_reads = 0
             self.last_good_gyro_z = wz
             return wz, True
@@ -224,31 +228,9 @@ class BaseFollowController:
             return float(self.last_good_gyro_z or 0.0), False
 
     def calibrate_gyro(self):
-        with self.lock:
-            samples = int(self.params.get('gyro_bias_samples', 15))
-            dt = float(self.params.get('dt', 0.10))
-        acc = 0.0
-        ok = 0
-        for _ in range(max(1, samples)):
-            if self.stop_event.is_set():
-                break
-            try:
-                result = self.send_command_and_wait(
-                    self.car_id,
-                    {'cmd': 'mpu6050', 'command_id': str(uuid.uuid4())},
-                    timeout=1.2,
-                )
-                parsed = result.get('_parsed_stdout')
-                if isinstance(parsed, dict):
-                    for key in ('gyro_z', 'gz', 'gyroZ', 'z'):
-                        if key in parsed:
-                            acc += float(parsed[key])
-                            ok += 1
-                            break
-            except Exception as exc:
-                self.log(f'gyro calibration read failed: {exc}', 'warning')
-            time.sleep(min(0.04, dt))
-        return acc / max(ok, 1)
+        # Совместимость со старым кодом. Сейчас калибровка гироскопа перенесена
+        # в прошивку Arduino: I2Cdevlib выполняет её один раз при первом вызове mpu6050.
+        return 0.0
 
     def start(self, params=None):
         if params:
@@ -279,9 +261,14 @@ class BaseFollowController:
     def _run(self):
         try:
             self.log('controller starting')
-            self.stop_motors('before calibration')
-            self.gyro_bias = self.calibrate_gyro()
-            self.log(f'gyro_bias={self.gyro_bias:.6f} rad/s')
+            self.stop_motors('before gyro warmup')
+            self.gyro_bias = 0.0
+
+            # Первый вызов mpu6050 запускает однократную калибровку на Arduino.
+            # Важно: машинка в этот момент должна стоять неподвижно.
+            wz0, gyro0_ok = self.safe_read_gyro_z()
+            self.gyro_z_f = wz0
+            self.log(f'gyro ready: omega_z={wz0:.6f} rad/s, valid={gyro0_ok}')
 
             while not self.stop_event.is_set():
                 t0 = time.time()

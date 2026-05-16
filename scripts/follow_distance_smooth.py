@@ -81,20 +81,12 @@ def read_distance_cm():
 
 def read_gyro_z():
     data = mpu6050()
-    return float(data.get("gyro_z", 0.0))
+    return float(data.get("omega_z", data.get("gyro_z", 0.0)))
 
 def calibrate_gyro_bias(samples=CALIBRATION_SAMPLES):
-    print(f"[calibration] gyro bias, samples={samples}")
-    acc = 0.0
-    ok = 0
-    for _ in range(samples):
-        wz = read_gyro_z()
-        acc += wz
-        ok += 1
-        time.sleep(0.03)
-    bias = acc / max(ok, 1)
-    print(f"[calibration] gyro_bias={bias:.5f} rad/s")
-    return bias
+    # Калибровка теперь выполняется в прошивке Arduino через I2Cdevlib
+    # один раз при первом вызове mpu6050(). Здесь bias не считаем.
+    return 0.0
 
 def prime_distance_filter(max_attempts=20):
     for _ in range(max_attempts):
@@ -105,8 +97,10 @@ def prime_distance_filter(max_attempts=20):
         time.sleep(0.05)
     raise RuntimeError("No valid HC-SR04 distance during init")
 
-# Калибровка перед стартом: машинка должна стоять спокойно
+# Первый вызов mpu6050() в прошивке запускает однократную калибровку.
+# Машинка в этот момент должна стоять неподвижно.
 gyro_bias = calibrate_gyro_bias()
+_ = read_gyro_z()
 d_raw = prime_distance_filter()
 d_f = d_raw
 wz_f = 0.0
@@ -125,7 +119,7 @@ print("[run] smooth follower started")
 
 for step in range(STEPS):
     d_raw = read_distance_cm()
-    wz_raw = read_gyro_z() - gyro_bias
+    wz_raw = read_gyro_z()
 
     if is_valid_distance(d_raw):
         bad_distance_count = 0

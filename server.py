@@ -356,7 +356,7 @@ class ScriptRunner:
         api = {
             'motor': make_command('motor', timeout=0.75),
             'duration': lambda: make_command('duration', timeout=1.5)(),
-            'mpu6050': lambda: make_command('mpu6050', timeout=1.5)(),
+            'mpu6050': lambda: make_command('mpu6050', timeout=8.0)(),
             'ping': lambda: make_command('ping', timeout=1.0)(),
             'time': TimeProxy,
             'print': _print,
@@ -544,11 +544,11 @@ def parse_distance_cm_from_stdout(stdout):
 def parse_gyro_z_from_stdout(stdout):
     parsed = try_parse_embedded_json(stdout)
     if isinstance(parsed, dict):
-        for key in ('gyro_z', 'gz', 'gyroZ', 'z'):
+        for key in ('omega_z', 'gyro_z', 'gyro_z_rad_s', 'gz', 'gyroZ', 'z'):
             if key in parsed:
                 return float(parsed[key])
     text = '' if stdout is None else str(stdout)
-    match = re.search(r'(?:gyro[_\s-]*z|gz|z)[^0-9+\-]*([+\-]?\d+(?:[.,]\d+)?)', text, re.I)
+    match = re.search(r'(?:omega[_\s-]*z|gyro[_\s-]*z|gz|z)[^0-9+\-]*([+\-]?\d+(?:[.,]\d+)?)', text, re.I)
     if match:
         return float(match.group(1).replace(',', '.'))
     raise ValueError(f'cannot parse gyro_z from stdout: {text[:160]}')

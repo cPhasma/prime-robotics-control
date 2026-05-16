@@ -48,7 +48,7 @@ const char CMD_DURATION_DESC[] PROGMEM = "Получить длительнос�
 
 // Команда mpu6050
 const char CMD_MPU6050_NAME[] PROGMEM = "mpu6050";
-const char CMD_MPU6050_DESC[] PROGMEM = "Получить все данные с MPU6050 (гироскоп + акселерометр)";
+const char CMD_MPU6050_DESC[] PROGMEM = "Получить угловую скорость MPU6050 в rad/s с однократной калибровкой";
 
 // Команда motor
 const char CMD_MOTOR_NAME[] PROGMEM = "motor";

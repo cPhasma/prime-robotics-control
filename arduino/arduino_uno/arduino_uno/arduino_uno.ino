@@ -64,7 +64,7 @@ void sendCapabilities() {
     "\"right_dir\":{\"type\":\"string\",\"enum\":[\"forward\",\"backward\"]}"
     "}},"
     "{\"name\":\"duration\",\"description\":\"Измерение расстояния ультразвуковым датчиком\",\"params_schema\":{}},"
-    "{\"name\":\"mpu6050\",\"description\":\"Все данные MPU6050 (гироскоп + акселерометр + температура)\",\"params_schema\":{}}"
+    "{\"name\":\"mpu6050\",\"description\":\"Угловая скорость MPU6050 в rad/s, калибровка один раз при первом обращении\",\"params_schema\":{}}"
     "]}"
   ));
   delay(100);
