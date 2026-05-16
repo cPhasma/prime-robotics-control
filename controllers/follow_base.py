@@ -124,6 +124,10 @@ class BaseFollowController:
         return max(lo, min(hi, x))
 
     @staticmethod
+    def mat_vec_mul(A, x):
+        return [sum(a * b for a, b in zip(row, x)) for row in A]
+
+    @staticmethod
     def slew(current, target, max_step):
         return current + BaseFollowController.clamp(target - current, -max_step, max_step)
 
@@ -309,14 +313,19 @@ class BaseFollowController:
 
                 target_u_v, target_u_w, extra = self.compute_control(p, dt, K, target_d, distance_valid, gyro_valid)
 
-                if not distance_valid and self.bad_distance_reads >= int(p.get('sensor_slow_after', 3)):
-                    target_u_v = min(target_u_v, float(p.get('sensor_fail_max_u', 0.18)))
-
+                # Сам закон управления уже посчитан в compute_control() без ветвлений.
+                # При потере дальномера safe_read_distance_m() подставляет последнее
+                # корректное значение, поэтому здесь управление дополнительно не меняем.
                 self.u_v_prev = self.slew(self.u_v_prev, target_u_v, float(p['max_du']))
                 self.u_w_prev = self.slew(self.u_w_prev, target_u_w, float(p.get('max_du_turn', p['max_du'])))
 
-                u_l = self.clamp(self.u_v_prev - self.u_w_prev, 0.0, 1.0)
-                u_r = self.clamp(self.u_v_prev + self.u_w_prev, 0.0, 1.0)
+                # [u_L, u_R]^T = [[1, -1], [1, 1]] * [u_v, u_w]^T
+                u_l_raw, u_r_raw = self.mat_vec_mul(
+                    [[1.0, -1.0], [1.0, 1.0]],
+                    [self.u_v_prev, self.u_w_prev],
+                )
+                u_l = self.clamp(u_l_raw, 0.0, 1.0)
+                u_r = self.clamp(u_r_raw, 0.0, 1.0)
 
                 target_pwm_l = self.norm_to_pwm(u_l)
                 target_pwm_r = self.norm_to_pwm(u_r)
