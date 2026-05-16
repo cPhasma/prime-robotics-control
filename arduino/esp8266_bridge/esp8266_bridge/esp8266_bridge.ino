@@ -20,6 +20,8 @@ const unsigned long HEARTBEAT_INTERVAL = 10000;
 String serialBuffer = "";
 String tcpBuffer = "";
 
+void requestCapabilitiesFromArduino();
+
 void setup() {
   Serial.begin(115200);
   pinMode(LED_BUILTIN, OUTPUT);
@@ -102,5 +104,15 @@ void connectToServer() {
     client.print("{\"type\":\"hello\",\"device\":\"esp8266\",\"car_id\":\"");
     client.print(carId);
     client.println("\"}");
+
+    // После подключения сразу просим Arduino повторно отправить список команд.
+    // Это исправляет ситуацию, когда Arduino отправила capabilities при старте,
+    // но ESP ещё не была подключена к серверу.
+    delay(150);
+    requestCapabilitiesFromArduino();
   }
+}
+
+void requestCapabilitiesFromArduino() {
+  Serial.println("{\"cmd\":\"get_capabilities\",\"command_id\":\"esp_startup_capabilities\"}");
 }

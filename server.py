@@ -75,6 +75,29 @@ pending_lock = threading.Lock()
 # ВАЖНО: у этой машинки PWM инверсный: 0 = максимум, 255 = стоп.
 MOTOR_PWM_INVERTED = True
 
+# Резервный список команд. Он нужен, чтобы сайт мог работать даже если
+# Arduino отправила capabilities при старте раньше, чем ESP успела подключиться к серверу.
+# При нормальном ответе прошивки этот список будет заменён реальным списком от Arduino.
+DEFAULT_COMMANDS = [
+    {"name": "ping", "description": "Проверка связи", "params_schema": {}},
+    {
+        "name": "motor",
+        "description": "Управление моторами. PWM инверсный: 0 = максимум, 255 = стоп",
+        "params_schema": {
+            "left_pwm": {"type": "integer", "min": 0, "max": 255},
+            "right_pwm": {"type": "integer", "min": 0, "max": 255},
+            "left_dir": {"type": "string", "enum": ["forward", "backward"]},
+            "right_dir": {"type": "string", "enum": ["forward", "backward"]},
+        },
+    },
+    {"name": "duration", "description": "Измерение расстояния ультразвуковым датчиком", "params_schema": {}},
+    {"name": "mpu6050", "description": "Угловая скорость MPU6050 в rad/s", "params_schema": {}},
+]
+
+
+def default_commands_copy():
+    return json.loads(json.dumps(DEFAULT_COMMANDS, ensure_ascii=False))
+
 
 def normalize_car_id(car_id):
     car_id = str(car_id or 'car1').strip().lower()
@@ -110,6 +133,24 @@ def emit_car_status():
         'connected': any(info['connected'] for info in cars.values()),
         'cars': cars,
     })
+
+
+def ensure_default_commands(car_id):
+    """Даёт сайту список команд сразу после подключения одной машинки.
+
+    Это не заменяет нормальный механизм capabilities: если Arduino ответит своим
+    списком, он перезапишет этот резервный список.
+    """
+    car_id = normalize_car_id(car_id)
+    should_emit = False
+    with esp_lock:
+        if not registered_commands_by_car.get(car_id):
+            registered_commands_by_car[car_id] = default_commands_copy()
+            should_emit = True
+    if should_emit:
+        logger.info(f'✅ [{car_id}] Default commands loaded until Arduino capabilities arrive')
+        socketio.emit('capabilities', {'car_id': car_id, 'commands': registered_commands_by_car[car_id]})
+        emit_car_status()
 
 
 def choose_free_car_id():
@@ -745,6 +786,8 @@ def handle_arduino_message(conn, line):
             requested = data.get('car_id') or data.get('device_id') or data.get('id')
             if requested in CAR_IDS:
                 reassign_connection(conn, requested)
+            ensure_default_commands(conn.car_id)
+            request_capabilities_later(conn.car_id)
             socketio.emit('arduino_raw', {'car_id': conn.car_id, **data})
             return
 
@@ -801,6 +844,45 @@ def send_to_esp(car_id, message):
             return False
     logger.warning(f'⚠️ {car_id} ESP not connected')
     return False
+
+
+def request_capabilities_from_car(car_id, report_error=False):
+    """Запрашивает список команд только у конкретной подключённой машинки.
+
+    Если report_error=False, отсутствие машинки не считается ошибкой. Это важно
+    для режима работы только с одной машинкой.
+    """
+    car_id = normalize_car_id(car_id)
+    if not is_car_connected(car_id):
+        if report_error:
+            socketio.emit('command_error', {'car_id': car_id, 'error': f'{car_id} ESP not connected'})
+        return False
+
+    request_json = json.dumps({
+        'cmd': 'get_capabilities',
+        'command_id': f'capabilities_request_{car_id}_{int(time.time() * 1000)}'
+    }, ensure_ascii=False)
+    ok = send_to_esp(car_id, request_json)
+    if ok:
+        logger.info(f'✅ Capabilities request sent to {car_id}')
+    elif report_error:
+        socketio.emit('command_error', {'car_id': car_id, 'error': 'Failed to send request'})
+    return ok
+
+
+def request_capabilities_later(car_id, delay=0.7):
+    car_id = normalize_car_id(car_id)
+
+    def _task():
+        try:
+            request_capabilities_from_car(car_id, report_error=False)
+        except Exception as exc:
+            logger.warning(f'⚠️ Delayed capabilities request failed for {car_id}: {exc}')
+
+    timer = threading.Timer(delay, _task)
+    timer.daemon = True
+    timer.start()
+
 
 # ========== FOLLOW CONTROLLERS ==========
 
@@ -876,18 +958,20 @@ def handle_send_command(data):
 def handle_request_capabilities(data=None):
     data = data or {}
     requested = str(data.get('car_id', 'all')).lower()
-    target_ids = CAR_IDS if requested == 'all' else (normalize_car_id(requested),)
 
-    for car_id in target_ids:
-        if is_car_connected(car_id):
-            request_json = json.dumps({'cmd': 'get_capabilities', 'command_id': f'capabilities_request_{car_id}'})
-            if send_to_esp(car_id, request_json):
-                logger.info(f'✅ Capabilities request sent to {car_id}')
-            else:
-                emit('command_error', {'car_id': car_id, 'error': 'Failed to send request'})
-        else:
-            logger.warning(f'⚠️ {car_id} ESP not connected')
-            emit('command_error', {'car_id': car_id, 'error': f'{car_id} ESP not connected'})
+    if requested == 'all':
+        connected_ids = [car_id for car_id in CAR_IDS if is_car_connected(car_id)]
+        if not connected_ids:
+            emit('command_error', {'car_id': 'all', 'error': 'Нет подключённых машинок'})
+            return
+        for car_id in connected_ids:
+            ensure_default_commands(car_id)
+            request_capabilities_from_car(car_id, report_error=False)
+        return
+
+    car_id = normalize_car_id(requested)
+    ensure_default_commands(car_id)
+    request_capabilities_from_car(car_id, report_error=True)
 
 
 @socketio.on('save_script')
@@ -972,12 +1056,19 @@ def handle_follow_start(data):
 @socketio.on('follow_start_both')
 def handle_follow_start_both(data):
     errors = []
+    started = []
     params = (data or {}).get('params', {})
     for car_id in CAR_IDS:
+        if not is_car_connected(car_id):
+            logger.warning(f'⚠️ {car_id} skipped: ESP not connected')
+            continue
         try:
             follow_controllers[car_id].start(params)
+            started.append(car_id)
         except Exception as exc:
             errors.append(f'{car_id}: {exc}')
+    if not started and not errors:
+        errors.append('нет подключённых машинок')
     if errors:
         emit('follow_error', {'car_id': 'all', 'error': '; '.join(errors)})
 
