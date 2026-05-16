@@ -1,0 +1,8 @@
+* 7d637f4 (HEAD -> main) Polish repository documentation and archive version snapshots
+* 115ecf3 Integrate matrix state model and combined sensor polling
+* c407419 Support single-car mode and capabilities refresh
+* a0dc4d4 Switch MPU6050 reading to I2Cdev with one-time calibration
+* 1d3024e Implement matrix-only follow control law
+* 8ad3f8e Fix inverted PWM mapping for motor driver
+* ff103bd Add two-car control baseline and split follow controller
+* 876b694 Initialize repository structure and documentation
