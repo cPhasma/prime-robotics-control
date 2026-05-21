@@ -1,0 +1,585 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🚗 WiFi Car Control</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Segoe UI', Tahoma, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        .container { max-width: 1200px; margin: 0 auto; }
+        h1 { color: white; text-align: center; margin-bottom: 20px; }
+        .card {
+            background: white;
+            border-radius: 15px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        .status-bar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 10px;
+            flex-wrap: wrap;
+            gap: 15px;
+        }
+        .status-left, .status-right { display: flex; align-items: center; gap: 15px; flex-wrap: wrap; }
+        .status-dot {
+            width: 14px; height: 14px; border-radius: 50%; background: #e74c3c; animation: pulse 2s infinite;
+        }
+        .status-dot.connected { background: #2ecc71; }
+        @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.5} }
+        .btn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white; border: none; padding: 10px 16px; border-radius: 8px; cursor: pointer;
+            font-size: 14px; font-weight: 600; transition: transform 0.2s;
+        }
+        .btn:hover { transform: translateY(-2px); }
+        .btn:disabled { background: #bdc3c7; cursor: not-allowed; transform: none; }
+        .btn-small { padding: 8px 14px; font-size: 13px; }
+        .btn-danger { background: linear-gradient(135deg, #e74c3c 0%, #c0392b 100%); }
+        .btn-green { background: linear-gradient(135deg, #2ecc71 0%, #27ae60 100%); }
+        .btn-blue { background: linear-gradient(135deg, #3498db 0%, #2980b9 100%); }
+        .commands-grid { display: grid; gap: 15px; }
+        .command-card { border: 2px solid #e9ecef; border-radius: 10px; padding: 15px; background: #f8f9fa; }
+        .command-card h3 { margin-bottom: 10px; color: #495057; border-bottom: 2px solid #667eea; padding-bottom: 8px; }
+        .command-desc { color: #666; font-size: 14px; margin-bottom: 15px; }
+        .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 15px; }
+        .form-group { margin-bottom: 12px; }
+        .form-group label { display: block; margin-bottom: 5px; color: #555; font-size: 14px; font-weight: 500; }
+        .form-group input, .form-group select, textarea {
+            width: 100%; padding: 10px; border: 2px solid #ddd; border-radius: 8px; font-size: 14px;
+        }
+        .form-group input:focus, .form-group select:focus, textarea:focus { outline: none; border-color: #667eea; }
+        .range-value { text-align: center; font-weight: bold; color: #667eea; margin-top: 5px; }
+        input[type="range"] { -webkit-appearance: none; width: 100%; height: 8px; border-radius: 4px; background: #ddd; }
+        input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; width: 20px; height: 20px; border-radius: 50%; background: #667eea; cursor: pointer; }
+        .panel-grid { display: grid; grid-template-columns: 1.2fr 0.8fr; gap: 20px; }
+        .editor { min-height: 360px; font-family: Consolas, monospace; resize: vertical; }
+        .log-panel {
+            background: #2c3e50; color: #ecf0f1; padding: 15px; border-radius: 8px; max-height: 300px; overflow-y: auto;
+            font-family: 'Courier New', monospace; font-size: 12px;
+        }
+        .log-entry { margin-bottom: 8px; padding: 8px; background: rgba(255,255,255,0.1); border-radius: 4px; border-left: 3px solid #3498db; }
+        .log-entry.success { border-left-color: #2ecc71; }
+        .log-entry.error { border-left-color: #e74c3c; }
+        .log-entry.info { border-left-color: #f39c12; }
+        .telemetry { font-size: 12px; color: #666; margin-top: 10px; }
+        .commands-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; }
+        .empty-state { text-align: center; padding: 40px 20px; color: #666; }
+        .empty-state-icon { font-size: 48px; margin-bottom: 10px; }
+        .script-toolbar, .script-meta { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-bottom: 12px; }
+        .script-list { display: grid; gap: 8px; max-height: 240px; overflow-y: auto; }
+        .script-item { padding: 10px; border: 1px solid #e5e7eb; border-radius: 8px; display: flex; justify-content: space-between; gap: 10px; align-items: center; }
+        .script-item small { color: #666; display: block; }
+        .badge { display: inline-block; padding: 5px 10px; border-radius: 999px; background: #eef2ff; color: #4338ca; font-size: 12px; font-weight: 700; }
+
+        .follow-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+        .follow-form { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+        .follow-form label { font-size: 12px; color: #555; font-weight: 700; }
+        .follow-form input, .follow-form select { width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 6px; }
+        .follow-toolbar { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin: 12px 0; }
+        .follow-kpi { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; margin-top: 10px; }
+        .kpi { background: #f8fafc; border: 1px solid #e5e7eb; border-radius: 8px; padding: 8px; }
+        .kpi small { color: #64748b; display: block; }
+        .kpi strong { font-size: 18px; color: #111827; }
+        canvas.follow-chart { width: 100%; height: 230px; border: 1px solid #e5e7eb; border-radius: 8px; background: #fff; }
+        @media (max-width: 900px) {
+            .panel-grid { grid-template-columns: 1fr; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🚗 WiFi Car Control</h1>
+
+        <div class="card">
+            <div class="status-bar">
+                <div class="status-left">
+                    <div class="status-dot" id="statusDot"></div>
+                    <span id="statusText">ESP: Disconnected</span>
+                    <span class="badge" id="scriptStateBadge">script: idle</span>
+                </div>
+                <div class="status-right">
+                    <button class="btn btn-small btn-blue" onclick="requestCapabilities()" id="refreshBtn" disabled>🔄 Запросить команды</button>
+                </div>
+            </div>
+            <div class="telemetry" id="telemetry">Uptime: -- | Memory: --</div>
+        </div>
+
+
+        <div class="card">
+            <div class="commands-header">
+                <h2>🎯 Реальное следование за объектом</h2>
+                <span class="badge" id="followStateBadge">follow: stopped</span>
+            </div>
+            <div class="follow-form">
+                <div><label>Целевая дистанция, м</label><input id="followTargetDistance" type="number" step="0.05" value="1.0"></div>
+                <div><label>Период dt, c</label><input id="followDt" type="number" step="0.01" value="0.05"></div>
+                <div><label>PWM</label><input type="text" value="0=max, 255=stop" disabled></div>
+                <div><label>kp расстояния</label><input id="followKpD" type="number" step="0.05" value="0.50"></div>
+                <div><label>kd расстояния</label><input id="followKdD" type="number" step="0.05" value="0.60"></div>
+                <div><label>k_brake торможение</label><input id="followKBrake" type="number" step="0.05" value="0.85"></div>
+                <div><label>Зона замедления, м</label><input id="followSlowZone" type="number" step="0.05" value="0.60"></div>
+                <div><label>Прогноз вперёд, c</label><input id="followLookahead" type="number" step="0.05" value="0.35"></div>
+                <div><label>max_u</label><input id="followMaxU" type="number" step="0.05" value="0.45"></div>
+                <div><label>k_z бок. отклонение</label><input id="followKz" type="number" step="0.1" value="1.3"></div>
+                <div><label>k_theta курс</label><input id="followKtheta" type="number" step="0.1" value="1.8"></div>
+                <div><label>k_omega гироскоп</label><input id="followKomega" type="number" step="0.05" value="0.22"></div>
+                <div><label>Ось рыскания gyro</label><select id="followGyroAxis"><option value="auto">auto</option><option value="z">z</option><option value="x">x</option><option value="y">y</option></select></div>
+                <div><label>Знак gyro</label><select id="followGyroSign"><option value="1">+1</option><option value="-1">-1</option></select></div>
+                <div><label>Вес гироскопа</label><input id="followGyroWeight" type="number" step="0.05" value="0.85"></div>
+                <div><label>Сэмплы калибровки gyro</label><input id="followGyroSamples" type="number" step="5" value="40"></div>
+                <div><label>PWM разгон/шаг</label><input id="followPwmAccel" type="number" step="1" value="18"></div>
+                <div><label>PWM торможение/шаг</label><input id="followPwmBrake" type="number" step="1" value="75"></div>
+            </div>
+            <div class="follow-toolbar">
+                <button class="btn btn-green" onclick="startFollow()">▶ Старт регулятора</button>
+                <button class="btn btn-danger" onclick="stopFollow()">⛔ Стоп</button>
+                <button class="btn btn-blue" onclick="updateFollowParams()">⚙️ Обновить параметры</button>
+                <button class="btn" onclick="clearFollowCharts()">Очистить графики</button>
+            </div>
+            <div class="follow-kpi">
+                <div class="kpi"><small>d, м</small><strong id="kpiD">--</strong></div>
+                <div class="kpi"><small>ошибка, м</small><strong id="kpiE">--</strong></div>
+                <div class="kpi"><small>theta, рад</small><strong id="kpiTheta">--</strong></div>
+                <div class="kpi"><small>PWM L/R</small><strong id="kpiPwm">--</strong></div>
+                <div class="kpi"><small>gyro bias</small><strong id="kpiGyroBias">--</strong></div>
+                <div class="kpi"><small>ось / dt</small><strong id="kpiGyroAxis">--</strong></div>
+            </div>
+            <div class="follow-grid" style="margin-top:12px;">
+                <div><canvas id="followDistanceChart" class="follow-chart" width="560" height="230"></canvas></div>
+                <div><canvas id="followStateChart" class="follow-chart" width="560" height="230"></canvas></div>
+                <div><canvas id="followControlChart" class="follow-chart" width="560" height="230"></canvas></div>
+                <div><canvas id="followPwmChart" class="follow-chart" width="560" height="230"></canvas></div>
+            </div>
+            <div class="telemetry">Перед стартом машинка должна стоять неподвижно: сервер останавливает моторы, собирает gyro_z, вычисляет bias и дальше выводит в логи x=[vL,vR,theta,z,d] примерно раз в секунду.</div>
+        </div>
+
+        <div class="card">
+            <div class="commands-header">
+                <h2>🧠 Python Script Runner</h2>
+                <span style="color:#666;font-size:14px;">Безопасный запуск по одному скрипту за раз</span>
+            </div>
+            <div class="panel-grid">
+                <div>
+                    <div class="script-meta">
+                        <input id="scriptName" type="text" placeholder="script_name.py" value="lqr_drive.py">
+                        <button class="btn btn-green" onclick="saveScript()">💾 Сохранить</button>
+                        <button class="btn" onclick="runScript()" id="runScriptBtn">▶ Запустить</button>
+                        <button class="btn btn-blue" onclick="pauseScript()" id="pauseScriptBtn">⏸ Пауза</button>
+                        <button class="btn btn-green" onclick="resumeScript()" id="resumeScriptBtn">⏯ Продолжить</button>
+                        <button class="btn btn-danger" onclick="stopScript()" id="stopScriptBtn">⛔ Стоп</button>
+                    </div>
+                    <textarea id="scriptEditor" class="editor">import math
+import time
+
+# В этой машинке PWM инверсный: 0 = максимум, 255 = стоп.
+def drive_step(pwm, delay_s=0.1):
+    motor(left_pwm=pwm, right_pwm=pwm, left_dir="forward", right_dir="forward")
+    time.sleep(delay_s)
+
+for pwm in [210, 190, 170]:
+    drive_step(pwm, 0.1)
+
+angle = math.pi / 4
+print("angle =", angle)
+motor(left_pwm=255, right_pwm=255, left_dir="forward", right_dir="forward")
+</textarea>
+                    <div class="telemetry">Разрешены: import из whitelist (time, math, random, statistics, json, numpy, scipy.*), def/return, motor(...), duration(), mpu6050(), ping(), print(...)</div>
+                </div>
+                <div>
+                    <div class="commands-header" style="margin-bottom:10px;">
+                        <h3>📚 Сохранённые скрипты</h3>
+                        <button class="btn btn-small btn-blue" onclick="refreshScripts()">Обновить</button>
+                    </div>
+                    <div class="script-list" id="scriptList"></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="card" id="commandsContainer">
+            <div class="commands-header">
+                <h2>🎮 Команды</h2>
+                <span id="commandsCount" style="color: #666; font-size: 14px;">0 команд</span>
+            </div>
+            <div id="commandsList" class="commands-grid">
+                <div class="empty-state">
+                    <div class="empty-state-icon">📦</div>
+                    <div>Список команд пуст</div>
+                    <div style="font-size: 12px; margin-top: 5px;">Нажмите "Запросить команды"</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="card">
+            <h2>📋 Лог событий</h2>
+            <div class="log-panel" id="logPanel">
+                <div class="log-entry info">Система готова...</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const socket = io();
+        let capabilitiesRequested = false;
+
+        socket.on('connect', () => {
+            document.getElementById('statusDot').classList.add('connected');
+            document.getElementById('statusText').textContent = 'Server: Connected';
+            addLog('✓ Подключено к серверу', 'success');
+            document.getElementById('refreshBtn').disabled = false;
+            refreshScripts();
+        });
+
+        socket.on('disconnect', () => {
+            document.getElementById('statusDot').classList.remove('connected');
+            document.getElementById('statusText').textContent = 'Server: Disconnected';
+            document.getElementById('refreshBtn').disabled = true;
+            addLog('✗ Отключено от сервера', 'error');
+        });
+
+        socket.on('esp_status', (data) => {
+            if (data.connected) {
+                document.getElementById('statusDot').classList.add('connected');
+                document.getElementById('statusText').textContent = 'ESP: Connected';
+                document.getElementById('refreshBtn').disabled = false;
+                addLog(`✓ ESP подключена: ${data.address}`, 'success');
+                if (!capabilitiesRequested) {
+                    setTimeout(() => requestCapabilities(), 500);
+                    capabilitiesRequested = true;
+                }
+            } else {
+                document.getElementById('statusDot').classList.remove('connected');
+                document.getElementById('statusText').textContent = 'ESP: Disconnected';
+                document.getElementById('refreshBtn').disabled = true;
+                addLog('✗ ESP отключена', 'error');
+            }
+        });
+
+        socket.on('capabilities', (data) => {
+            addLog(`✓ Получено ${data.commands.length} команд`, 'success');
+            renderCommands(data.commands);
+            document.getElementById('commandsCount').textContent = `${data.commands.length} команд`;
+        });
+
+        socket.on('telemetry', (data) => {
+            document.getElementById('telemetry').textContent = `Uptime: ${data.uptime || '--'}s | Memory: ${data.free_memory || '--'} bytes`;
+        });
+
+        socket.on('command_result', (data) => {
+            const status = data.exit_code === 0 ? 'success' : 'error';
+            addLog(`✓ ${data.command}: ${data.stdout || data.stderr || 'OK'}`, status);
+            const btn = document.querySelector(`[data-command-id="${data.command_id}"]`);
+            if (btn) {
+                btn.disabled = false;
+                btn.textContent = 'Выполнить';
+            }
+        });
+
+        socket.on('command_error', (data) => {
+            addLog(`✗ Ошибка команды: ${data.error}`, 'error');
+        });
+
+        socket.on('scripts_list', (data) => renderScriptList(data.scripts || []));
+        socket.on('script_saved', (data) => addLog(`✓ Скрипт сохранён: ${data.name}`, 'success'));
+        socket.on('script_loaded', (data) => {
+            document.getElementById('scriptName').value = data.name;
+            document.getElementById('scriptEditor').value = data.code;
+            addLog(`✓ Скрипт загружен: ${data.name}`, 'success');
+        });
+        socket.on('script_deleted', (data) => addLog(`✓ Скрипт удалён: ${data.name}`, 'success'));
+        socket.on('script_log', (data) => addLog(`[SCRIPT] ${data.message}`, data.level || 'info'));
+        socket.on('script_error', (data) => addLog(`✗ Ошибка скрипта: ${data.error}`, 'error'));
+        socket.on('script_state', (data) => updateScriptState(data));
+
+
+
+        const followHistory = [];
+        const followMaxPoints = 220;
+
+        socket.on('follow_state', (data) => {
+            const badge = document.getElementById('followStateBadge');
+            if (badge) badge.textContent = `follow: ${data.running ? 'running' : 'stopped'}`;
+        });
+        socket.on('follow_error', (data) => addLog(`✗ Follow: ${data.error}`, 'error'));
+        socket.on('follow_log', (data) => addLog(data.message, data.level || 'info'));
+        socket.on('follow_telemetry', (data) => {
+            followHistory.push(data);
+            while (followHistory.length > followMaxPoints) followHistory.shift();
+            updateFollowKpi(data);
+            drawFollowCharts();
+        });
+        function getFollowParams() {
+            return {
+                target_distance_m: Number(document.getElementById('followTargetDistance').value),
+                dt: Number(document.getElementById('followDt').value),
+                kp_d: Number(document.getElementById('followKpD').value),
+                kd_d: Number(document.getElementById('followKdD').value),
+                k_brake: Number(document.getElementById('followKBrake').value),
+                slow_zone_m: Number(document.getElementById('followSlowZone').value),
+                lookahead_s: Number(document.getElementById('followLookahead').value),
+                max_u: Number(document.getElementById('followMaxU').value),
+                k_z: Number(document.getElementById('followKz').value),
+                k_theta: Number(document.getElementById('followKtheta').value),
+                k_omega: Number(document.getElementById('followKomega').value),
+                gyro_axis: document.getElementById('followGyroAxis').value,
+                gyro_sign: Number(document.getElementById('followGyroSign').value),
+                gyro_model_weight: Number(document.getElementById('followGyroWeight').value),
+                gyro_bias_samples: Number(document.getElementById('followGyroSamples').value),
+                max_pwm_step_accel: Number(document.getElementById('followPwmAccel').value),
+                max_pwm_step_brake: Number(document.getElementById('followPwmBrake').value)
+            };
+        }
+        function startFollow() { clearFollowCharts(); socket.emit('follow_start', { params: getFollowParams() }); addLog('→ Старт регулятора следования', 'info'); }
+        function stopFollow() { socket.emit('follow_stop'); addLog('→ Стоп регулятора следования', 'info'); }
+        function updateFollowParams() { socket.emit('follow_update_params', { params: getFollowParams() }); addLog('→ Параметры регулятора обновлены', 'info'); }
+        function clearFollowCharts() {
+            followHistory.length = 0;
+            ['followDistanceChart','followStateChart','followControlChart','followPwmChart'].forEach(id => {
+                const c = document.getElementById(id); if (!c) return;
+                c.getContext('2d').clearRect(0, 0, c.width, c.height);
+            });
+        }
+        function updateFollowKpi(d) {
+            document.getElementById('kpiD').textContent = Number(d.d).toFixed(2);
+            document.getElementById('kpiE').textContent = Number(d.e_d).toFixed(2);
+            document.getElementById('kpiTheta').textContent = Number(d.theta).toFixed(3);
+            document.getElementById('kpiPwm').textContent = `${Math.round(Number(d.pwm_l))}/${Math.round(Number(d.pwm_r))}`;
+            const gb = document.getElementById('kpiGyroBias'); if (gb) gb.textContent = Number(d.gyro_bias || 0).toFixed(5);
+            const ga = document.getElementById('kpiGyroAxis'); if (ga) ga.textContent = `${d.gyro_axis || '--'} / ${Number(d.loop_dt || 0).toFixed(3)}`;
+        }
+        function drawSeries(canvasId, title, series) {
+            const canvas = document.getElementById(canvasId); if (!canvas) return;
+            const ctx = canvas.getContext('2d'), w = canvas.width, h = canvas.height;
+            ctx.clearRect(0, 0, w, h); ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, w, h);
+            ctx.strokeStyle = '#e5e7eb'; ctx.lineWidth = 1;
+            for (let i = 0; i <= 4; i++) { const y = 30 + i * (h - 50) / 4; ctx.beginPath(); ctx.moveTo(40, y); ctx.lineTo(w - 10, y); ctx.stroke(); }
+            ctx.fillStyle = '#111827'; ctx.font = '13px Segoe UI'; ctx.fillText(title, 10, 18);
+            if (followHistory.length < 2) return;
+            let values = []; series.forEach(s => followHistory.forEach(p => values.push(Number(p[s.key]))));
+            let minV = Math.min(...values), maxV = Math.max(...values);
+            if (Math.abs(maxV - minV) < 1e-6) { maxV += 1; minV -= 1; }
+            const pad = (maxV - minV) * 0.12; minV -= pad; maxV += pad;
+            const xOf = i => 40 + i * (w - 55) / Math.max(1, followHistory.length - 1);
+            const yOf = v => 25 + (maxV - v) * (h - 50) / (maxV - minV);
+            const colors = ['#2563eb', '#dc2626', '#16a34a', '#9333ea'];
+            series.forEach((s, si) => {
+                ctx.strokeStyle = colors[si % colors.length]; ctx.lineWidth = 2; ctx.beginPath();
+                followHistory.forEach((p, i) => { const x = xOf(i), y = yOf(Number(p[s.key])); if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y); });
+                ctx.stroke(); ctx.fillStyle = colors[si % colors.length]; ctx.fillText(s.label, 50 + si * 95, h - 8);
+            });
+            ctx.fillStyle = '#64748b'; ctx.font = '11px Segoe UI'; ctx.fillText(maxV.toFixed(2), 5, 35); ctx.fillText(minV.toFixed(2), 5, h - 25);
+        }
+        function drawFollowCharts() {
+            drawSeries('followDistanceChart', 'Дистанция: d, d_pred, target, ошибка', [{key:'d', label:'d'}, {key:'d_pred', label:'pred'}, {key:'d_target', label:'target'}, {key:'e_d', label:'error'}]);
+            drawSeries('followStateChart', 'Состояния: theta, z, omega, v', [{key:'theta', label:'theta'}, {key:'z', label:'z'}, {key:'omega_z', label:'omega'}, {key:'v', label:'v'}]);
+            drawSeries('followControlChart', 'Управление: u_l, u_r, u_v, u_w', [{key:'u_l', label:'uL'}, {key:'u_r', label:'uR'}, {key:'u_v', label:'uV'}, {key:'u_w', label:'uW'}]);
+            drawSeries('followPwmChart', 'PWM: left/right', [{key:'pwm_l', label:'PWM L'}, {key:'pwm_r', label:'PWM R'}]);
+        }
+        function requestCapabilities() {
+            const btn = document.getElementById('refreshBtn');
+            btn.disabled = true;
+            btn.textContent = '⏳ Запрос...';
+            addLog('→ Запрос списка команд...', 'info');
+            socket.emit('request_capabilities');
+            setTimeout(() => {
+                btn.disabled = false;
+                btn.textContent = '🔄 Запросить команды';
+            }, 2000);
+        }
+
+        function renderCommands(commands) {
+            const container = document.getElementById('commandsList');
+            container.innerHTML = '';
+            if (commands.length === 0) {
+                container.innerHTML = `<div class="empty-state"><div class="empty-state-icon">📦</div><div>Список команд пуст</div></div>`;
+                return;
+            }
+            commands.forEach(cmd => container.appendChild(createCommandCard(cmd)));
+        }
+
+        function createCommandCard(command) {
+            const card = document.createElement('div');
+            card.className = 'command-card';
+            const title = document.createElement('h3');
+            title.textContent = command.name;
+            card.appendChild(title);
+            if (command.description) {
+                const desc = document.createElement('div');
+                desc.className = 'command-desc';
+                desc.textContent = command.description;
+                card.appendChild(desc);
+            }
+            const form = document.createElement('form');
+            form.dataset.command = command.name;
+            if (command.params_schema && Object.keys(command.params_schema).length > 0) {
+                form.appendChild(createParamsForm(command.params_schema));
+            }
+            const btn = document.createElement('button');
+            btn.type = 'submit';
+            btn.className = 'btn';
+            btn.textContent = `Выполнить ${command.name}`;
+            btn.dataset.commandId = '';
+            form.onsubmit = (e) => {
+                e.preventDefault();
+                executeCommand(command.name, form, btn);
+            };
+            form.appendChild(btn);
+            card.appendChild(form);
+            return card;
+        }
+
+        function createParamsForm(schema) {
+            const container = document.createElement('div');
+            if (schema.left_pwm && schema.right_pwm) {
+                container.innerHTML = `
+                    <div class="form-row">
+                        <div>
+                            <div class="form-group">
+                                <label>Левый: направление</label>
+                                <select name="left_dir"><option value="forward">Вперёд</option><option value="backward">Назад</option></select>
+                            </div>
+                            <div class="form-group">
+                                <label>Левый PWM (0=max, 255=stop)</label>
+                                <input type="range" name="left_pwm" min="0" max="255" value="255">
+                                <div class="range-value" id="left_val">255</div>
+                            </div>
+                        </div>
+                        <div>
+                            <div class="form-group">
+                                <label>Правый: направление</label>
+                                <select name="right_dir"><option value="forward">Вперёд</option><option value="backward">Назад</option></select>
+                            </div>
+                            <div class="form-group">
+                                <label>Правый PWM (0=max, 255=stop)</label>
+                                <input type="range" name="right_pwm" min="0" max="255" value="255">
+                                <div class="range-value" id="right_val">255</div>
+                            </div>
+                        </div>
+                    </div>`;
+                const leftRange = container.querySelector('[name="left_pwm"]');
+                const rightRange = container.querySelector('[name="right_pwm"]');
+                leftRange.oninput = (e) => document.getElementById('left_val').textContent = e.target.value;
+                rightRange.oninput = (e) => document.getElementById('right_val').textContent = e.target.value;
+                return container;
+            }
+            Object.entries(schema).forEach(([key, param]) => {
+                const group = document.createElement('div');
+                group.className = 'form-group';
+                const label = document.createElement('label');
+                label.textContent = param.description || key;
+                group.appendChild(label);
+                let input;
+                if (param.enum) {
+                    input = document.createElement('select');
+                    input.name = key;
+                    param.enum.forEach(val => {
+                        const opt = document.createElement('option');
+                        opt.value = val;
+                        opt.textContent = val;
+                        input.appendChild(opt);
+                    });
+                } else if (param.type === 'integer') {
+                    input = document.createElement('input');
+                    input.type = 'number';
+                    input.name = key;
+                    if (param.minimum !== undefined) input.min = param.minimum;
+                    if (param.maximum !== undefined) input.max = param.maximum;
+                    if (param.min !== undefined) input.min = param.min;
+                    if (param.max !== undefined) input.max = param.max;
+                } else {
+                    input = document.createElement('input');
+                    input.type = 'text';
+                    input.name = key;
+                }
+                group.appendChild(input);
+                container.appendChild(group);
+            });
+            return container;
+        }
+
+        function executeCommand(commandName, form, btn) {
+            if (btn.disabled) return;
+            const formData = new FormData(form);
+            const params = {};
+            formData.forEach((v, k) => { params[k] = v; });
+            const commandId = `cmd_${Date.now()}`;
+            btn.dataset.commandId = commandId;
+            btn.disabled = true;
+            btn.textContent = 'Выполнение...';
+            socket.emit('send_command', { command: commandName, command_id: commandId, params: params });
+            addLog(`→ Отправка ${commandName}...`, 'info');
+        }
+
+        function saveScript() {
+            socket.emit('save_script', { name: document.getElementById('scriptName').value, code: document.getElementById('scriptEditor').value });
+        }
+        function runScript() {
+            socket.emit('run_script', { name: document.getElementById('scriptName').value, code: document.getElementById('scriptEditor').value });
+        }
+        function pauseScript() { socket.emit('pause_script'); }
+        function resumeScript() { socket.emit('resume_script'); }
+        function stopScript() { socket.emit('stop_script'); }
+        function refreshScripts() { fetch('/api/scripts').then(r => r.json()).then(data => renderScriptList(data.scripts || [])); }
+
+        function renderScriptList(scripts) {
+            const list = document.getElementById('scriptList');
+            list.innerHTML = '';
+            if (!scripts.length) {
+                list.innerHTML = '<div class="empty-state" style="padding:20px 10px;"><div>Скриптов пока нет</div></div>';
+                return;
+            }
+            scripts.forEach(script => {
+                const item = document.createElement('div');
+                item.className = 'script-item';
+                item.innerHTML = `
+                    <div>
+                        <strong>${escapeHtml(script.name)}</strong>
+                        <small>${script.size} bytes · ${escapeHtml(script.modified_at)}</small>
+                    </div>
+                    <div style="display:flex;gap:8px;">
+                        <button class="btn btn-small btn-blue">Открыть</button>
+                        <button class="btn btn-small btn-danger">Удалить</button>
+                    </div>`;
+                const [openBtn, delBtn] = item.querySelectorAll('button');
+                openBtn.onclick = () => socket.emit('load_script', { name: script.name });
+                delBtn.onclick = () => socket.emit('delete_script', { name: script.name });
+                list.appendChild(item);
+            });
+        }
+
+        function updateScriptState(state) {
+            const badge = document.getElementById('scriptStateBadge');
+            badge.textContent = `script: ${state.state}`;
+            document.getElementById('runScriptBtn').disabled = state.state !== 'idle';
+            document.getElementById('pauseScriptBtn').disabled = state.state !== 'running';
+            document.getElementById('resumeScriptBtn').disabled = state.state !== 'paused';
+            document.getElementById('stopScriptBtn').disabled = !['running', 'paused', 'stopping'].includes(state.state);
+        }
+
+        function addLog(message, type = 'info') {
+            const panel = document.getElementById('logPanel');
+            const entry = document.createElement('div');
+            entry.className = `log-entry ${type}`;
+            const time = new Date().toLocaleTimeString();
+            entry.textContent = `[${time}] ${message}`;
+            panel.insertBefore(entry, panel.firstChild);
+            while (panel.children.length > 120) panel.removeChild(panel.lastChild);
+        }
+
+        function escapeHtml(str) {
+            return String(str).replace(/[&<>"']/g, s => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[s]));
+        }
+    </script>
+</body>
+</html>
