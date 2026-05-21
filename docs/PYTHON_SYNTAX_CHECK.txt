@@ -1,0 +1,13 @@
+Python syntax check
+
+Checked files:
+- server.py
+- controllers/follow_base.py
+- controllers/follow_car1.py
+- controllers/follow_car2.py
+
+Command:
+python -m py_compile server.py controllers/follow_base.py controllers/follow_car1.py controllers/follow_car2.py
+
+Result:
+Syntax check passed.
